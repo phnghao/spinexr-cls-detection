@@ -15,26 +15,6 @@ def get_model():
     model.classifier = nn.Linear(model.classifier.in_features, 2)
     return model
 
-def youden_index(y_true, y_prob, n_thresholds = 1001):
-    thresholds = np.linspace(0,1, n_thresholds)
-
-    best_J = -1
-    best_thr = 0.5
-
-    for thr in thresholds:
-        y_pred = (y_prob >= thr).astype(int)
-
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-        sensitivity = tp / (tp + fn + 1e-8)
-        specificity = tn / (tn + fp + 1e-8)
-
-        J = sensitivity + specificity -1
-        if J > best_J:
-            best_J = J
-            best_thr = thr
-    return best_thr, best_J
-
 def compute_metrics(y_true, y_pred):
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
 
@@ -44,10 +24,10 @@ def compute_metrics(y_true, y_pred):
     specificity = tn / (tn + fp + 1e-8)
 
     return {
-        "accuracy": acc,
-        "f1": f1,
-        "sensitivity": sensitivity,
-        "specificity": specificity
+        'accuracy': acc,
+        'f1': f1,
+        'sensitivity': sensitivity,
+        'specificity': specificity
     }
 
 def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_size = 224):
@@ -68,7 +48,8 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
 
     print(f'loading weights from: {model_path}')
     checkpoint = torch.load(model_path, map_location = device)
-    model.load_state_dict(checkpoint)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    c_star = checkpoint['threshold']
     model.eval()
 
     all_probs = []
@@ -92,31 +73,27 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
     auroc = roc_auc_score(all_labels, all_probs)
     print(f'\nAUROC: {auroc:.4f}')
 
-    best_thr, best_J = youden_index(all_labels, all_probs)
-    print(f'Optimal threshold (Youden): {best_thr:.4f}')
-    print(f'Youden index: {best_J:.4f}')
-
-    preds = (all_probs >= best_thr).astype(int)
+    print(f'uising optimal threshold from validation {c_star:.4f}')
+    preds = (all_probs >= c_star).astype(int)
 
     metrics = compute_metrics(all_labels, preds)
-    print("\nFinal metrics (using Youden threshold):")
+    print("\nFinal metrics (fixed threshold from validation):")
     print(f"Accuracy    : {metrics['accuracy']:.4f}")
     print(f"F1-score    : {metrics['f1']:.4f}")
     print(f"Sensitivity : {metrics['sensitivity']:.4f}")
     print(f"Specificity : {metrics['specificity']:.4f}")
-
-    print("\nClassification report:")
+    print('\nClassification report:')
     print(classification_report(all_labels, preds, digits=4))
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--csv-file", required=True, type=str)
-    parser.add_argument("--image-dir", required=True, type=str)
-    parser.add_argument("--model-path", required=True, type=str)
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--num-workers", type=int, default=2)
-    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument('--csv-file', required=True, type=str)
+    parser.add_argument('--image-dir', required=True, type=str)
+    parser.add_argument('--model-path', required=True, type=str)
+    parser.add_argument('--batch-size', type=int, default=4)
+    parser.add_argument('--num-workers', type=int, default=2)
+    parser.add_argument('--image-size', type=int, default=224)
 
     args = parser.parse_args()
 
@@ -130,5 +107,5 @@ def main():
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
