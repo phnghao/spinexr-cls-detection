@@ -38,10 +38,11 @@ class Classifier:
         self.model.classifier = torch.nn.Linear(
             self.model.classifier.in_features,2
         )
-        self.model.load_state_dict(
-            torch.load(weight_path, map_location=self.device)
-        )
         self.model.to(self.device)
+        checkpoint = torch.load(weight_path, map_location=self.device)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.threshold = checkpoint['threshold']
+        
         self.model.eval()
         self.tf = get_transform(img_size=img_size, augment=False)
 
@@ -156,7 +157,7 @@ def draw_boxes(image, detections):
         )
     return img
 
-def infer_one_image(img_path, classifier:Classifier, detector:Detector, gt_annotator: GTAnnotator, cls_thr = 0.5, det_thr = 0.5, save_path = True):
+def infer_one_image(img_path, classifier:Classifier, detector:Detector, gt_annotator: GTAnnotator):
     
     # load image
     image = cv.imread(img_path)
@@ -178,10 +179,10 @@ def infer_one_image(img_path, classifier:Classifier, detector:Detector, gt_annot
     For any x with prediction p_hat(abnormal|x) >= c*, all all lesion detection results are retained.
     For the case p_hat(abnormal|x) < c*, only predicted bounding boxes with confidence higher than 0.5 are kept.
     """
-    if prob_abnormal >= cls_thr:
+    if prob_abnormal >= classifier.threshold:
         final_dets = detections
     else:
-        final_dets = [d for d in detections if d['conf'] >= det_thr]
+        final_dets = [d for d in detections if d['conf'] >= 0.5]
 
     # visualize
     pred_img = draw_boxes(image, final_dets)
@@ -203,7 +204,7 @@ def make_compare(ori, pred):
 
     return canvas
 
-def infer_all(input_dir, output_dir, classifier, detector, gt_annotator, cls_thr = 0.5, det_thr = 0.5):
+def infer_all(input_dir, output_dir, classifier, detector, gt_annotator):
     pred_dir = os.path.join(output_dir, 'predict')
     cmp_dir = os.path.join(output_dir, 'compare')
 
@@ -221,9 +222,7 @@ def infer_all(input_dir, output_dir, classifier, detector, gt_annotator, cls_thr
             img_path,
             classifier,
             detector,
-            gt_annotator,
-            cls_thr,
-            det_thr
+            gt_annotator
         )
 
         compare_img = make_compare(gt_img, pred)
@@ -243,8 +242,6 @@ if __name__ == '__main__':
     parser.add_argument('--input-dir', required = True, type = str)
     parser.add_argument('--output-dir', required = True, type = str)
     parser.add_argument('--gt-csv', required=True, type=str)
-    parser.add_argument('--cls-thr', type = float, default=0.5)
-    parser.add_argument('--det-thr', type = float, default=0.5)
 
     args = parser.parse_args()
 
@@ -252,5 +249,5 @@ if __name__ == '__main__':
     dter = Detector(args.det_path)
     gt = GTAnnotator(args.gt_csv)
 
-    infer_all(args.input_dir, args.output_dir, clsifer, dter, gt, args.cls_thr, args.det_thr)
+    infer_all(args.input_dir, args.output_dir, clsifer, dter, gt)
 

@@ -4,6 +4,4 @@ python -m spine.infer ^
     --det-path "./runs/detect/train/weights/best.pt" ^
     --input-dir "./data/test_pngs" ^
     --output-dir "./outputs" ^
-    --gt-csv "./data/test_prepro_data.csv" ^
-    --cls-thr 0.28 ^
-    --det-thr 0.28
+    --gt-csv "./data/test_prepro_data.csv"
