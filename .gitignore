@@ -1,0 +1,25 @@
+ __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+venv/
+.env/
+
+*.pth
+*.pt
+*.ckpt
+*.weights
+*.onnx
+
+data/
+datasets/
+outputs/
+runs/
+results/
+logs
+
+.ipynb_checkpoints/
+
+.DS_Store
+Thumbs.db
