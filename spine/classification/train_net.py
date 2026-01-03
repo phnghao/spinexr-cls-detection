@@ -117,7 +117,8 @@ def train(csv_file, img_dir, save_file, n_epochs = 500, batch_size = 4, num_work
 
     loss_func, optimizer = get_trainer(model)
 
-    best_val_J = -1
+    best_val_loss = float('inf')
+
     for epoch in range(1, n_epochs+1):
         train_loss, train_acc = train_epochs(
             epoch, model, train_loader, loss_func, optimizer, device
@@ -128,26 +129,37 @@ def train(csv_file, img_dir, save_file, n_epochs = 500, batch_size = 4, num_work
         )
 
         best_c, best_J = youden_index_thr(val_labels, val_probs)
-        
+
+        val_pred = (val_probs >= 0.5).astype(int)
+        val_acc = (val_pred == val_labels).mean()
+
         print(
             f'Epoch {epoch}/{n_epochs} | '
             f'Train Loss: {train_loss:.4f} | '
             f'Val Loss: {val_loss:.4f} | '
+            f'Val Acc: {val_acc:.4f} | '
             f'Best c*: {best_c:.4f} | '
             f'Youden J: {best_J:.4f}'
         )
-        if best_J > best_val_J:
-            best_val_J = best_J
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+
             torch.save({
                 'model_state_dict': model.state_dict(),
-                'threshold': best_c
+                'threshold': best_c,
+                'val_loss': val_loss,
+                'val_acc': val_acc,
+                'youden_J': best_J
             }, save_file)
 
-            print(f'saved best model | J = {best_val_J:.4f}, c* = {best_c:.4f}')
+            print(
+                f'saved best model | '
+                f'val_loss = {val_loss:.4f}, '
+                f'c* = {best_c:.4f}'
+            )
 
 
-
-        
 def main():
     parser = argparse.ArgumentParser()
 
