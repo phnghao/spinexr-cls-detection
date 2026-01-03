@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import argparse
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_auc_score, f1_score
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, f1_score
 
 def get_model():
     model = densenet201(weights = None)
@@ -17,18 +17,11 @@ def get_model():
 
 def compute_metrics(y_true, y_pred):
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-    acc = accuracy_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred)
     sensitivity = tp / (tp + fn + 1e-8)
     specificity = tn / (tn + fp + 1e-8)
 
-    return {
-        'accuracy': acc,
-        'f1': f1,
-        'sensitivity': sensitivity,
-        'specificity': specificity
-    }
+    return sensitivity, specificity, f1
 
 def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_size = 224):
 
@@ -54,7 +47,7 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
 
     all_probs = []
     all_labels = []
-    print('Start Inference')
+    print(f'Evaluating model DenseNet201 on test set')
 
     with torch.no_grad():
         for images, labels in tqdm(test_loader):
@@ -71,19 +64,15 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
     all_labels = np.array(all_labels)
 
     auroc = roc_auc_score(all_labels, all_probs)
-    print(f'\nAUROC: {auroc:.4f}')
-
-    print(f'uising optimal threshold from validation {c_star:.4f}')
     preds = (all_probs >= c_star).astype(int)
+    sens, spec, f1 = compute_metrics(all_labels, preds)
 
-    metrics = compute_metrics(all_labels, preds)
-    print("\nFinal metrics (fixed threshold from validation):")
-    print(f"Accuracy    : {metrics['accuracy']:.4f}")
-    print(f"F1-score    : {metrics['f1']:.4f}")
-    print(f"Sensitivity : {metrics['sensitivity']:.4f}")
-    print(f"Specificity : {metrics['specificity']:.4f}")
-    print('\nClassification report:')
-    print(classification_report(all_labels, preds, digits=4))
+    print('results')
+    print(f'AUROC        : {auroc:.4f}')
+    print(f'Sensitivity  : {sens:.4f}')
+    print(f'Specificity  : {spec:.4f}')
+    print(f'F1-score     : {f1:.4f}')
+    print(f'Used threshold (from val): {c_star:.4f}')
 
 def main():
     parser = argparse.ArgumentParser()

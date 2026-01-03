@@ -5,7 +5,7 @@ from torchvision.models import densenet201, DenseNet201_Weights
 from spine.classification.data_loader import prepare_loader
 from tqdm import tqdm
 import os
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score, roc_auc_score
 import argparse
 
 def getmodel():
@@ -39,6 +39,15 @@ def youden_index_thr(y_true, y_prob, n_thresholds = 1001):
             best_J = J
             best_thr = thr
     return best_thr, best_J
+
+def compute_metrics(y_true, y_prob, thr):
+    y_pred = (y_prob >= thr).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    sensitivity = tp / (tp + fn + 1e-8)
+    specificity = tn / (tn + fp + 1e-8)
+    f1 = f1_score(y_true, y_pred)
+
+    return sensitivity, specificity, f1
         
 
 def train_epochs(epoch, model, loader, loss_func, optimizer, device):
@@ -117,7 +126,7 @@ def train(csv_file, img_dir, save_file, n_epochs = 500, batch_size = 4, num_work
 
     loss_func, optimizer = get_trainer(model)
 
-    best_val_loss = float('inf')
+    best_auroc = 0.0
 
     for epoch in range(1, n_epochs+1):
         train_loss, train_acc = train_epochs(
@@ -128,36 +137,38 @@ def train(csv_file, img_dir, save_file, n_epochs = 500, batch_size = 4, num_work
             epoch, model, val_loader, loss_func, device
         )
 
+        # AUROC
+        val_auroc = roc_auc_score(val_labels, val_probs)
+
+        # Youden's Index
         best_c, best_J = youden_index_thr(val_labels, val_probs)
 
-        val_pred = (val_probs >= 0.5).astype(int)
-        val_acc = (val_pred == val_labels).mean()
+        # metrics
+        val_sens, val_spec, val_f1 = compute_metrics(val_labels, val_probs, best_c)
 
         print(
             f'Epoch {epoch}/{n_epochs} | '
             f'Train Loss: {train_loss:.4f} | '
             f'Val Loss: {val_loss:.4f} | '
-            f'Val Acc: {val_acc:.4f} | '
-            f'Best c*: {best_c:.4f} | '
-            f'Youden J: {best_J:.4f}'
+            f'AUROC: {val_auroc:.4f} | '
+            f'Sens: {val_sens:.4f} | '
+            f'Spec: {val_spec:.4f} | '
+            f'F1: {val_f1:.4f} | '
+            f'c*: {best_c:.4f} | '
         )
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-
+        if val_auroc > best_auroc:
+            best_auroc = val_auroc
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'threshold': best_c,
-                'val_loss': val_loss,
-                'val_acc': val_acc,
+                'val_auroc': val_auroc,
+                'sensitivity': val_sens,
+                'specificity': val_spec,
+                'f1_score': val_f1,
                 'youden_J': best_J
             }, save_file)
-
-            print(
-                f'saved best model | '
-                f'val_loss = {val_loss:.4f}, '
-                f'c* = {best_c:.4f}'
-            )
+            print(f'saved AUROC: {val_auroc:.4f}')
 
 
 def main():
