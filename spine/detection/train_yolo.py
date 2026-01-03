@@ -10,6 +10,7 @@ def train_yolo(data_yaml, epochs = 100, batch =4, imgsz = 640, device='0'):
         data = data_yaml,
         epochs=epochs,
         imgsz=imgsz,
+        scale=0.5,
         batch=batch,
         optimizer='SGD',
         lr0=0.001,
