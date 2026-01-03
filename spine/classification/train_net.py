@@ -5,7 +5,7 @@ from torchvision.models import densenet201, DenseNet201_Weights
 from spine.classification.data_loader import prepare_loader
 from tqdm import tqdm
 import os
-from sklearn.metrics import confusion_matrix, f1_score, roc_auc_score
+from sklearn.metrics import confusion_matrix, f1_score, roc_auc_score, roc_curve
 import argparse
 
 def getmodel():
@@ -20,24 +20,17 @@ def get_trainer(model):
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
     return loss, optimizer
 
-def youden_index_thr(y_true, y_prob, n_thresholds = 1001):
-    thresholds = np.linspace(0, 1, n_thresholds)
+def youden_index_thr(y_true, y_prob):
+    fpr, tpr, thresholds = roc_curve(y_true, y_prob)
+    J = tpr - fpr
+    ix = np.argmax(J)
 
-    best_J = -1
-    best_thr = 0.5
+    best_thr = thresholds[ix]
+    best_J = J[ix]
 
-    for thr in thresholds:
-        y_pred = (y_prob >= thr).astype(int)
+    if best_thr > 1.0:
+        best_thr = 1.0
 
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-        sensitivity = tp / (tp + fn + 1e-8)
-        specificity = tn / (tn + fp + 1e-8)
-
-        J = sensitivity + specificity -1
-        if J > best_J:
-            best_J = J
-            best_thr = thr
     return best_thr, best_J
 
 def compute_metrics(y_true, y_prob, thr):
