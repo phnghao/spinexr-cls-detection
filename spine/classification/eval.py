@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import argparse
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, f1_score
+from sklearn.metrics import confusion_matrix, roc_auc_score, f1_score
 
 def get_model():
     model = densenet201(weights = None)
@@ -22,6 +22,48 @@ def compute_metrics(y_true, y_pred):
     specificity = tn / (tn + fp + 1e-8)
 
     return sensitivity, specificity, f1
+
+def boostrap_metric(y_true, y_prob, threshold, n_booststraps = 1000):
+    print(f'running bootstrap {n_booststraps} times with threshold = {threshold:.4f}')
+    sens_list, spec_list, f1_list, auc_list = [], [], [], []
+    rng = np.random.RandomState(42)
+    n_samples = len(y_true)
+
+    for _ in range(n_booststraps):
+        indices = rng.randint(0, n_samples, n_samples)
+        if len(np.unique(y_true[indices])) < 2: continue
+
+        y_true_boot = y_true[indices]
+        y_prob_boot = y_prob[indices]
+        
+        y_pred_boot = (y_prob_boot >= threshold).astype(int)
+
+        s, sp, f = compute_metrics(y_true_boot, y_pred_boot)
+        auc = roc_auc_score(y_true_boot, y_prob_boot)
+
+        sens_list.append(s)
+        spec_list.append(sp)
+        f1_list.append(f)
+        auc_list.append(auc)
+
+    def get_ci(values):
+        lower = np.percentile(values, 2.5)
+        upper = np.percentile(values, 97.5)
+        mean = np.mean(values)
+        return mean, lower, upper
+        
+    return {
+        'AUROC': get_ci(auc_list),
+        'Sensitivity': get_ci(sens_list),
+        'Specificity': get_ci(spec_list),
+        'F1': get_ci(f1_list)
+    }
+
+def print_result(metrics_dict):
+    print(f"\n{'Metric':<15} | {'Mean':<10} | {'95% CI (Lower - Upper)':<25}")
+    for k, v in metrics_dict.items():
+        mean, low, high = v
+        print(f"{k:<15} | {mean*100:.2f}%     | ({low*100:.2f} - {high*100:.2f})")
 
 def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_size = 224):
 
@@ -42,7 +84,8 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
     print(f'loading weights from: {model_path}')
     checkpoint = torch.load(model_path, map_location = device)
     model.load_state_dict(checkpoint['model_state_dict'])
-    c_star = checkpoint['threshold']
+    op_thr = checkpoint['threshold']
+    print(f'optimal threshold: {op_thr}')
     model.eval()
 
     all_probs = []
@@ -62,16 +105,8 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
     all_probs = torch.cat(all_probs).numpy()
     all_labels = torch.cat(all_labels).numpy()
 
-    auroc = roc_auc_score(all_labels, all_probs)
-    preds = (all_probs >= c_star).astype(int)
-    sens, spec, f1 = compute_metrics(all_labels, preds)
-
-    print('results')
-    print(f'AUROC        : {auroc:.4f}')
-    print(f'Sensitivity  : {sens:.4f}')
-    print(f'Specificity  : {spec:.4f}')
-    print(f'F1-score     : {f1:.4f}')
-    print(f'Used threshold (from val): {c_star:.4f}')
+    result = boostrap_metric(all_labels, all_probs, op_thr)
+    print_result(result)
 
 def main():
     parser = argparse.ArgumentParser()
