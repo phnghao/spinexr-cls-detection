@@ -12,7 +12,7 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_auc_sco
 
 def get_model():
     model = densenet201(weights = None)
-    model.classifier = nn.Linear(model.classifier.in_features, 2)
+    model.classifier = nn.Linear(model.classifier.in_features, 1)
     return model
 
 def compute_metrics(y_true, y_pred):
@@ -52,16 +52,15 @@ def evaluate(csv_file, img_dir, model_path, batch_size=4, num_workers = 2, img_s
     with torch.no_grad():
         for images, labels in tqdm(test_loader):
             images = images.to(device)
-            labels = labels.to(device)
+            logits = model(images).squeeze(1)
 
-            outputs = model(images)
-            probs = torch.softmax(outputs, dim=1)[:,1]
+            probs = torch.sigmoid(logits)
 
-            all_probs.extend(probs.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+            all_probs.append(probs.cpu())
+            all_labels.append(labels)
 
-    all_probs = np.array(all_probs)
-    all_labels = np.array(all_labels)
+    all_probs = torch.cat(all_probs).numpy()
+    all_labels = torch.cat(all_labels).numpy()
 
     auroc = roc_auc_score(all_labels, all_probs)
     preds = (all_probs >= c_star).astype(int)

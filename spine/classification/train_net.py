@@ -11,12 +11,12 @@ import argparse
 def getmodel():
     model = densenet201(weights = DenseNet201_Weights.IMAGENET1K_V1)
     model.classifier = nn.Linear(
-        model.classifier.in_features,2
+        model.classifier.in_features,1
     )
     return model
 
 def get_trainer(model):
-    loss = nn.CrossEntropyLoss()
+    loss = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
     return loss, optimizer
 
@@ -27,9 +27,6 @@ def youden_index_thr(y_true, y_prob):
 
     best_thr = thresholds[ix]
     best_J = J[ix]
-
-    if best_thr > 1.0:
-        best_thr = 1.0
 
     return best_thr, best_J
 
@@ -46,14 +43,13 @@ def compute_metrics(y_true, y_prob, thr):
 def train_epochs(epoch, model, loader, loss_func, optimizer, device):
     model.train()
     running_loss = 0.0
-    correct = 0 
-    total = 0
+
     pbar = tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch} [Train]')
     for i, (image, label) in pbar:
-        image, label = image.to(device), label.to(device)
+        images, labels= image.to(device), label.float().to(device)
 
-        output = model(image)
-        loss = loss_func(output, label)
+        output = model(images).squeeze(1)
+        loss = loss_func(output, labels)
 
         optimizer.zero_grad()
         loss.backward()
@@ -61,14 +57,9 @@ def train_epochs(epoch, model, loader, loss_func, optimizer, device):
 
         running_loss += loss.item()
 
-        _, predicted = torch.max(output, 1)
-        total += label.size(0)
-        correct += (predicted == label).sum().item()
         pbar.set_postfix({'loss': loss.item()})
 
-    avg_loss = running_loss / len(loader)
-    acc = 100*correct / total
-    return avg_loss, acc
+    return running_loss/len(loader)
 
 
 def val_epoch(epoch, model, loader, loss_func, device):
@@ -81,18 +72,18 @@ def val_epoch(epoch, model, loader, loss_func, device):
     with torch.no_grad():
         pbar = tqdm(enumerate(loader), total=len(loader), desc=f'Epoch {epoch} [Val]')
         for i, (image, label) in pbar:
-            image, label = image.to(device), label.to(device)
-            output = model(image)
-            loss = loss_func(output, label)
+            images, labels= image.to(device), label.float().to(device)
+
+            output = model(images).squeeze(1)
+            loss = loss_func(output, labels)
 
             running_loss += loss.item()
 
-            probs = torch.softmax(output, dim=1)[:, 1]
+            probs = torch.sigmoid(output)
             all_probs.append(probs.cpu())
-            all_labels.append(label.cpu())
+            all_labels.append(labels.cpu())
 
     avg_loss = running_loss / len(loader)
-
     all_probs = torch.cat(all_probs).numpy()
     all_labels = torch.cat(all_labels).numpy()
 
@@ -122,7 +113,7 @@ def train(csv_file, img_dir, save_file, n_epochs = 500, batch_size = 4, num_work
     best_auroc = 0.0
 
     for epoch in range(1, n_epochs+1):
-        train_loss, train_acc = train_epochs(
+        train_loss = train_epochs(
             epoch, model, train_loader, loss_func, optimizer, device
         )
 
