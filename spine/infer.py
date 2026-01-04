@@ -36,7 +36,7 @@ class Classifier:
         self.model = densenet201(weights=None)
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.classifier = torch.nn.Linear(
-            self.model.classifier.in_features,2
+            self.model.classifier.in_features,1
         )
         self.model.to(self.device)
         checkpoint = torch.load(weight_path, map_location=self.device)
@@ -51,8 +51,8 @@ class Classifier:
         image = self.tf(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            logits = self.model(image)
-            prob = F.softmax(logits, dim=1)[0,1].item()
+            logit = self.model(image).squeeze(1)
+            prob = torch.sigmoid(logit).item()
         return prob
 
 class Detector:
@@ -165,7 +165,7 @@ def infer_one_image(img_path, classifier:Classifier, detector:Detector, gt_annot
 
     # gt
     gt_boxes = gt_annotator.get_boxes(image_id)
-    gt_img = draw_gt_boxes(image, gt_boxes) if len(gt_boxes) > 0 else image
+    gt_img = draw_gt_boxes(image.copy(), gt_boxes) if len(gt_boxes) > 0 else image
 
     # classifier
     prob_abnormal = classifier.infer_one(img_path)
@@ -185,7 +185,17 @@ def infer_one_image(img_path, classifier:Classifier, detector:Detector, gt_annot
         final_dets = [d for d in detections if d['conf'] >= 0.5]
 
     # visualize
-    pred_img = draw_boxes(image, final_dets)
+    pred_img = draw_boxes(image.copy(), final_dets)
+    cv.putText(
+        pred_img,
+        f'p_abnormal={prob_abnormal:.3f}',
+        (20, 30),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (255, 255, 255),
+        2
+    )
+
 
     # save
 
