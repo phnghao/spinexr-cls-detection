@@ -21,6 +21,13 @@ def evaluation(weights_path, data_yaml, batch= 16, split = 'test'):
         device = device
     )
 
+    names = model.names  # dict {id: class_name}
+
+    print("\nPer-class AP@50–95:")
+    for i, ap in enumerate(metrics.box.maps):
+        print(f"{names[i]:<25}: {ap:.4f}")
+
+
     print(f'mAP@50 | {metrics.box.map50:.4f}')
     print(f'mAP@50-95 | {metrics.box.map:.4f}')
     print(f'precision | {metrics.box.mp:.4f}')
