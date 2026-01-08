@@ -20,9 +20,9 @@ class Trainer(DefaultTrainer):
             dataset_name,
             cfg,
             distributed=False,
-            output_folder=output_folder
+            output_dir=output_folder
         )
-    
+     
 def setup_cfg(args):
     cfg = get_cfg()
     add_sparsercnn_config(cfg)
