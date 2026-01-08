@@ -7,6 +7,8 @@ from detectron2.evaluation import COCOEvaluator
 from detectron2.data import MetadataCatalog
 from detectron2.utils.logger import setup_logger
 
+import spine.sparsercnn.detector
+from spine.sparsercnn.config import add_sparsercnn_config
 from spine.sparsercnn.register_dataset import register_spine_datasets
 
 class Trainer(DefaultTrainer):
@@ -23,7 +25,7 @@ class Trainer(DefaultTrainer):
     
 def setup_cfg(args):
     cfg = get_cfg()
-
+    add_sparsercnn_config(cfg)
     # load sparse r-cnn config
     cfg.merge_from_file(args.config_file)
 
