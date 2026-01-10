@@ -180,7 +180,7 @@ class DetectionEvaluator:
         cfg = self.setup(args)
 
         # build model from config
-        print(f'loaed model from: {cfg.MODEL.WEIGHTS}')
+        print(f'loaded model from: {cfg.MODEL.WEIGHTS}')
         model = build_model(cfg)
         model.eval()
 
