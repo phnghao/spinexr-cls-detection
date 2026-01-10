@@ -171,7 +171,8 @@ class DetectionEvaluator:
             f.write(pprint.pformat(results))
         print(f"saved to: {save_path}")
     
-    def evaluate(self, args):
+    def evaluate(self):
+        args = self.args
         # register data
         register_spine_datasets()
 
@@ -206,15 +207,15 @@ def main(args):
     if args.eval_task in ['cls', 'all']:
         print('running classication evaluation')
 
-        if not args.cls_model or not args.cls_csv or not args.cls_img_dir:
+        if not args.cls_model or not args.cls_csv or not args.img_dir:
             print('require parameter for classification')
         else:
             cls_evaluator = ClassificationEvaluator(
                 csv_file=args.cls_csv,
-                img_dir=args.cls_img_dir,
+                img_dir=args.img_dir,
                 model_path=args.cls_model,
-                output_dir=args.cls_output, # Nơi lưu kết quả CLS
-                batch_size=4,
+                output_dir=args.cls_output,
+                batch_size=8,
                 img_size=224
             )
             cls_evaluator.evaluate()
@@ -230,7 +231,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--eval-task", default="all", choices=["cls", "det", "all"])
     parser.add_argument("--cls-csv", default="./data/classification/test.csv", help="Path to classification test csv")
-    parser.add_argument("--cls-img-dir", default="./data/test_images", help="Path to test images folder")
+    parser.add_argument("--img-dir", default="./data/test_images", help="Path to test images folder")
     parser.add_argument("--cls-model", default=None, help="Path to trained classification model (.pth)")
     parser.add_argument("--cls-output", default="./outputs/cls_eval", help="Folder to save classification metrics")
 
