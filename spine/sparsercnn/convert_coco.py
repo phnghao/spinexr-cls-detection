@@ -18,7 +18,6 @@ CLASS_NAMES = [
 CATEGORY_MAP = {name: i for i, name in enumerate(CLASS_NAMES)}
 
 def convert_to_coco(csv_path, img_dir, output_path):
-    print(f'Loading CSV: {csv_path}')
     df = pd.read_csv(csv_path)
 
     coco = {
@@ -27,7 +26,6 @@ def convert_to_coco(csv_path, img_dir, output_path):
         'categories': []
     }
 
-    # categories
     for name, cid in CATEGORY_MAP.items():
         coco['categories'].append({
             'id': cid,
@@ -36,73 +34,79 @@ def convert_to_coco(csv_path, img_dir, output_path):
         })
 
     ann_id = 1
-    img_id_counter = 1
+    img_id = 1
+    num_positive = 0
+    num_negative = 0
 
-    unique_images = df['image_id'].unique()
-    print(f'Processing {len(unique_images)} images')
-
-    for img_name in tqdm(unique_images):
-        filename = f'{img_name}.png'
+    for image_name in tqdm(df['image_id'].unique()):
+        filename = f'{image_name}.png'
         img_path = os.path.join(img_dir, filename)
 
         if not os.path.exists(img_path):
-            print(f'[WARNING] Missing image: {img_path}')
             continue
 
         img = cv.imread(img_path)
         if img is None:
-            print(f'[WARNING] Cannot read image: {img_path}')
             continue
 
         h, w = img.shape[:2]
 
         coco['images'].append({
-            'id': img_id_counter,
+            'id': img_id,
             'file_name': filename,
             'height': h,
             'width': w
         })
 
-        rows = df[df['image_id'] == img_name]
+        rows = df[df['image_id'] == image_name]
         has_ann = False
 
-        for _, row in rows.iterrows():
-            label = row['lesion_type']
-
+        for _, r in rows.iterrows():
+            label = r['lesion_type']
             if label not in CATEGORY_MAP:
                 continue
-            if pd.isna(row['xmin']):
+            if pd.isna(r['xmin']):
                 continue
 
-            x1, y1, x2, y2 = row[['xmin', 'ymin', 'xmax', 'ymax']]
-            w_box = x2 - x1
-            h_box = y2 - y1
+            x1, y1, x2, y2 = r[['xmin', 'ymin', 'xmax', 'ymax']]
+            x1 = max(0, min(x1, w - 1))
+            y1 = max(0, min(y1, h - 1))
+            x2 = max(0, min(x2, w))
+            y2 = max(0, min(y2, h))
 
-            if w_box <= 0 or h_box <= 0:
+            bw = x2 - x1
+            bh = y2 - y1
+            if bw <= 0 or bh <= 0:
                 continue
 
             coco['annotations'].append({
                 'id': ann_id,
-                'image_id': img_id_counter,
+                'image_id': img_id,
                 'category_id': CATEGORY_MAP[label],
-                'bbox': [float(x1), float(y1), float(w_box), float(h_box)],
-                'area': float(w_box * h_box),
+                'bbox': [float(x1), float(y1), float(bw), float(bh)],
+                'area': float(bw * bh),
                 'iscrowd': 0,
-                'segmentation': []
+                'segmentation': [[]]
             })
 
             ann_id += 1
             has_ann = True
 
-        img_id_counter += 1
+        if has_ann:
+            num_positive += 1
+        else:
+            num_negative += 1
 
-    print(f'Saving COCO json to {output_path}')
+        img_id += 1
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
     with open(output_path, 'w') as f:
         json.dump(coco, f)
 
-    print(f'Done: {len(coco["images"])} images, {len(coco["annotations"])} annotations')
+    print(f'Images: {len(coco["images"])}')
+    print(f'Annotations: {len(coco["annotations"])}')
+    print(f'Positive images: {num_positive}')
+    print(f'Negative images: {num_negative}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
