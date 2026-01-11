@@ -4,7 +4,7 @@ python -m spine.classification.train_net ^
     --csv-file "./data/classification/train.csv" ^
     --image-dir "./data/train_pngs" ^
     --save-file "./outputs/densenet/best.pth" ^
-    --nepochs 45 ^
+    --nepochs 90 ^
     --batch-size 32 ^
     --num-workers 4 ^
     --image-size 224

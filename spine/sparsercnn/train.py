@@ -22,13 +22,29 @@ class Trainer(DefaultTrainer):
             distributed=False,
             output_dir=output_folder
         )
-     
+    
+    @classmethod
+    def build_optimizer(cls, cfg, model):
+        params = []
+        for key, value in model.named_parameters():
+            if not value.requires_grad:
+                continue
+            lr = cfg.SOLVER.BASE_LR
+            weight_decay = cfg.SOLVER.WEIGHT_DECAY
+
+            if 'bias' in key or 'norm' in key:
+                weight_decay = 0.0
+            params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
+
+        optimizer = torch.optim.AdamW(params, lr=cfg.SOLVER.BASE_LR)
+        return optimizer
 def setup_cfg(args):
     cfg = get_cfg()
     add_sparsercnn_config(cfg)
     # load sparse r-cnn config
     cfg.merge_from_file(args.config_file)
 
+    cfg.merge_from_list(args.opts)
     # register dataset
     register_spine_datasets()
 
