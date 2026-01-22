@@ -4,16 +4,11 @@ import cv2
 import random
 import argparse
 import numpy as np
+import torch
 
-CLASS_COLORS = {
-    0: (0, 255, 255),
-    1: (255, 0, 0),
-    2: (0, 255, 0),
-    3: (255, 255, 0),
-    4: (0, 200, 255),
-    5: (255, 0, 255),
-    6: (200, 200, 200)
-}
+from detectron2.utils.visualizer import Visualizer, ColorMode
+from detectron2.data import MetadataCatalog
+from detectron2.structures import Instances, Boxes
 
 CLASS_NAMES = {
     0: "Gai xuong",
@@ -25,7 +20,29 @@ CLASS_NAMES = {
     6: "Ton thuong khac"
 }
 
-NMS_THRESH = 0.1
+CLASS_COLORS_BGR = {
+    0: (0, 255, 255),
+    1: (255, 0, 0),
+    2: (0, 255, 0),
+    3: (255, 255, 0),
+    4: (0, 200, 255),
+    5: (255, 0, 255),
+    6: (200, 200, 200)
+}
+
+NMS_THRESH = 0.01
+
+def setup_metadata():
+    name = "spine_fixed_color"
+    if name in MetadataCatalog:
+        MetadataCatalog.remove(name)
+    meta = MetadataCatalog.get(name)
+    meta.thing_classes = [CLASS_NAMES[i] for i in range(len(CLASS_NAMES))]
+    meta.thing_colors = [
+        (CLASS_COLORS_BGR[i][2], CLASS_COLORS_BGR[i][1], CLASS_COLORS_BGR[i][0])
+        for i in range(len(CLASS_COLORS_BGR))
+    ]
+    return meta
 
 def apply_nms(boxes):
     if not boxes:
@@ -36,26 +53,38 @@ def apply_nms(boxes):
         x1, y1, x2, y2 = map(int, b["bbox"])
         bxywh.append([x1, y1, x2 - x1, y2 - y1])
         scores.append(float(b.get("score", 1.0)))
-    idxs = cv2.dnn.NMSBoxes(bxywh, scores, 0.0, NMS_THRESH)
+    
+    idxs = cv2.dnn.NMSBoxes(bxywh, scores, 0.1, NMS_THRESH)
     if len(idxs) == 0:
         return []
     idxs = np.array(idxs).flatten()
     return [boxes[i] for i in idxs]
 
-def draw_boxes(img, boxes):
-    for b in boxes:
-        x1, y1, x2, y2 = map(int, b["bbox"])
-        cid = b["category_id"]
-        score = b.get("score", None)
-        name = CLASS_NAMES.get(cid, "Unknown")
-        color = CLASS_COLORS.get(cid, (255, 255, 255))
-        label = name if score is None else f"{name} {score:.2f}"
-        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-        cv2.rectangle(img, (x1, y1 - th - 8), (x1 + tw + 6, y1), (0, 0, 0), -1)
-        cv2.putText(img, label, (x1 + 3, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    return img
+def to_instances(boxes, h, w):
+    inst = Instances((h, w))
+    if not boxes:
+        inst.pred_boxes = Boxes(torch.empty((0, 4)))
+        inst.pred_classes = torch.empty((0,), dtype=torch.int64)
+        inst.scores = torch.empty((0,))
+        return inst
+    inst.pred_boxes = Boxes(torch.tensor([b["bbox"] for b in boxes], dtype=torch.float32))
+    inst.pred_classes = torch.tensor([b["category_id"] for b in boxes], dtype=torch.int64)
+    inst.scores = torch.tensor([b.get("score", 1.0) for b in boxes], dtype=torch.float32)
+    return inst
+
+def draw(img, instances, metadata, title):
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    v = Visualizer(
+        img_rgb,
+        metadata=metadata,
+        scale=1.0,
+        instance_mode=ColorMode.SEGMENTATION
+    )
+    out = v.draw_instance_predictions(instances)
+    res = cv2.cvtColor(out.get_image(), cv2.COLOR_RGB2BGR)
+    cv2.putText(res, title, (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    return res
 
 def main(args):
     with open(args.vis_json, "r", encoding="utf-8") as f:
@@ -68,12 +97,13 @@ def main(args):
     os.makedirs(out_pred, exist_ok=True)
     os.makedirs(out_vis, exist_ok=True)
 
-    indices = list(range(len(vis_data)))
-    if args.shuffle:
-        random.shuffle(indices)
-    indices = indices[:args.num_samples]
+    metadata = setup_metadata()
 
-    for i in indices:
+    idxs = list(range(len(vis_data)))
+    random.shuffle(idxs)
+    idxs = idxs[:args.num_samples]
+
+    for i in idxs:
         v = vis_data[i]
         p = pred_data[i]
 
@@ -85,35 +115,25 @@ def main(args):
         if img is None:
             continue
 
+        h, w = img.shape[:2]
         img_id = v.get("image_id", i)
         fname = f"{img_id}.png"
 
-        gt = p.get("ground_truth", [])
-        pred = apply_nms(p.get("predictions", []))
+        gt_boxes = p.get("ground_truth", [])
+        pr_boxes = apply_nms(p.get("predictions", []))
 
-        left_gt = draw_boxes(img.copy(), gt)
-        cv2.putText(left_gt, "Ground Truth", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        gt_inst = to_instances(gt_boxes, h, w)
+        pr_inst = to_instances(pr_boxes, h, w)
 
-        right_pred = draw_boxes(img.copy(), pred)
-        cv2.putText(right_pred, "Prediction", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        left = draw(img.copy(), gt_inst, metadata, "Ground Truth")
+        right = draw(img.copy(), pr_inst, metadata, "Prediction")
+        cv2.imwrite(os.path.join(out_pred, fname), cv2.hconcat([left, right]))
 
-        cv2.imwrite(os.path.join(out_pred, fname),
-                    cv2.hconcat([left_gt, right_pred]))
-
-        input_img = img.copy()
-        cv2.putText(input_img, "Input", (20, 40),
+        inp = img.copy()
+        cv2.putText(inp, "Input", (20, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-        output_img = draw_boxes(img.copy(), pred)
-        cv2.putText(output_img, "Output", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-
-        cv2.imwrite(os.path.join(out_vis, fname),
-                    cv2.hconcat([input_img, output_img]))
-
-    print("DONE")
+        outp = draw(img.copy(), pr_inst, metadata, "Output")
+        cv2.imwrite(os.path.join(out_vis, fname), cv2.hconcat([inp, outp]))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -121,6 +141,5 @@ if __name__ == "__main__":
     parser.add_argument("--pred-json", required=True)
     parser.add_argument("--out-dir", default="./outputs")
     parser.add_argument("--num-samples", type=int, default=5)
-    parser.add_argument("--shuffle", action="store_true")
     args = parser.parse_args()
     main(args)
