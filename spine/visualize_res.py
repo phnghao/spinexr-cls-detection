@@ -30,7 +30,9 @@ CLASS_COLORS_BGR = {
     6: (200, 200, 200)
 }
 
-NMS_THRESH = 0.01
+# IoU Threshold chuẩn: 0.5
+# Nếu 2 box chồng nhau > 50% diện tích thì xóa box điểm thấp hơn
+NMS_THRESH = 0.5
 
 def setup_metadata():
     name = "spine_fixed_color"
@@ -54,7 +56,10 @@ def apply_nms(boxes):
         bxywh.append([x1, y1, x2 - x1, y2 - y1])
         scores.append(float(b.get("score", 1.0)))
     
-    idxs = cv2.dnn.NMSBoxes(bxywh, scores, 0.1, NMS_THRESH)
+    # score_threshold=0.05: Chỉ lọc bỏ những box rác điểm quá thấp (< 5%)
+    # nms_threshold=0.5: Mức tiêu chuẩn
+    idxs = cv2.dnn.NMSBoxes(bxywh, scores, 0.05, NMS_THRESH)
+    
     if len(idxs) == 0:
         return []
     idxs = np.array(idxs).flatten()
