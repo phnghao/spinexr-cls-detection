@@ -1,5 +1,15 @@
 # Detection of Spinal Lesions in X-ray Images Using a Combined Classification and Detection Approach
 
+
+## Authors
+
+- **Pham Ngoc Hao** – Student ID: 23110146  
+- **Nguyen Dang Van Canh** – Student ID: 23110135  
+
+Faculty of Mathematics and Computer Science  
+University of Science, Vietnam National University Ho Chi Minh City (VNU-HCM)
+
+
 ## Problem
 Given a spinal X-ray image, the objective of this project is to automatically detect and classify
 multiple types of spinal lesions.
