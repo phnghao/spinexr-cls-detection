@@ -29,7 +29,7 @@ python -m pip install git+https://github.com/facebookresearch/detectron2.git
 This project implemented using dataset VinDR-SpineXR. For more detail, see [Data Preparation](./data/README.md)
 
 ## Training
-Both of two models after training will be saved their in ```text ./ouputs/```. In this project, we use two model namely: DenseNet-210 and Sparse R-CNN. For the former training task, run the script
+Both of two models after training will be saved their in ```./ouputs/```. In this project, we use two model namely: DenseNet-210 and Sparse R-CNN. For the former training task, run the script
 ```bash
 cls_train_net.bat
 ```
